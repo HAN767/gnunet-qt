@@ -118,7 +118,7 @@ GNUNET_TESTBED_host_create_with_id (uint32_t id,
  */
 unsigned int
 GNUNET_TESTBED_hosts_load_from_file (const char *filename,
-				     struct GNUNET_TESTBED_Host **hosts);
+				     struct GNUNET_TESTBED_Host ***hosts);
 
 
 /**
@@ -309,41 +309,11 @@ struct GNUNET_TESTBED_EventInformation
       const char *emsg;
 
       /**
-       * Peer information type; captures which of the types
-       * in the 'op_result' is actually in use.
+       * No result (NULL pointer) or generic result
+       * (whatever the GNUNET_TESTBED_ConnectAdapter returned).
        */
-      enum GNUNET_TESTBED_PeerInformationType pit;
-
-      /**
-       * Pointer to an operation-specific return value; NULL on error;
-       * can be NULL for certain operations.  Valid until
-       * 'GNUNET_TESTBED_operation_done' is called.
-       */
-      union
-      {
-	/**
-	 * No result (NULL pointer) or generic result
-	 * (whatever the GNUNET_TESTBED_ConnectAdapter returned).
-	 */
-	void *generic;
-
-	/**
-	 * Identity of host running the peer.
-	 */
-	struct GNUNET_TESTBED_Host *host;
-
-	/**
-	 * Identity of the peer.
-	 */
-	const struct GNUNET_PeerIdentity *pid;
-
-	/**
-	 * Configuration of the peer.
-	 */
-	const struct GNUNET_CONFIGURATION_Handle *cfg;
-
-      } op_result;
-
+      void *generic;
+      
     } operation_finished;   
 
 
@@ -410,8 +380,7 @@ typedef void (*GNUNET_TESTBED_ControllerStatusCallback) (void *cls,
 
 
 /**
- * Starts a controller process at the host. FIXME: add controller start callback
- * with the configuration with which the controller is started
+ * Starts a controller process at the host. 
  *
  * @param controller_ip the ip address of the controller. Will be set as TRUSTED
  *          host when starting testbed controller at host
@@ -555,6 +524,21 @@ GNUNET_TESTBED_cancel_registration (struct GNUNET_TESTBED_HostRegistrationHandle
 
 
 /**
+ * Callback to be called when an operation is completed
+ *
+ * @param cls the callback closure from functions generating an operation
+ * @param op the operation that has been finished
+ * @param emsg error message in case the operation has failed; will be NULL if
+ *          operation has executed successfully.
+ */
+typedef void (*GNUNET_TESTBED_OperationCompletionCallback) (void *cls,
+                                                            struct
+                                                            GNUNET_TESTBED_Operation
+                                                            *op,
+                                                            const char *emsg);
+
+
+/**
  * Create a link from slave controller to delegated controller. Whenever the
  * master controller is asked to start a peer at the delegated controller the
  * request will be routed towards slave controller (if a route exists). The
@@ -593,7 +577,7 @@ GNUNET_TESTBED_controller_link (struct GNUNET_TESTBED_Controller *master,
  * @param slave_host which host is used to run the slave controller; use NULL to
  *          make the master controller connect to the delegated host
  * @param sxcfg serialized and compressed configuration
- * @param sxcfg_size the size scfg
+ * @param sxcfg_size the size sxcfg
  * @param scfg_size the size of uncompressed serialized configuration
  * @param is_subordinate GNUNET_YES if the controller at delegated_host should
  *          be started by the master controller; GNUNET_NO if we are just
@@ -662,13 +646,28 @@ GNUNET_TESTBED_peer_create (struct GNUNET_TESTBED_Controller *controller,
 
 
 /**
+ * Functions of this signature are called when a peer has been successfully
+ * started or stopped.
+ *
+ * @param cls the closure from GNUNET_TESTBED_peer_start/stop()
+ * @param emsg NULL on success; otherwise an error description
+ */
+typedef void (*GNUNET_TESTBED_PeerChurnCallback) (void *cls,
+						  const char *emsg);
+
+
+/**
  * Start the given peer.
  *
  * @param peer peer to start
+ * @param pcc function to call upon completion
+ * @param pcc_cls closure for 'pcc'
  * @return handle to the operation
  */
 struct GNUNET_TESTBED_Operation *
-GNUNET_TESTBED_peer_start (struct GNUNET_TESTBED_Peer *peer);
+GNUNET_TESTBED_peer_start (struct GNUNET_TESTBED_Peer *peer,
+			   GNUNET_TESTBED_PeerChurnCallback pcc,
+			   void *pcc_cls);
 
 
 /**
@@ -677,22 +676,82 @@ GNUNET_TESTBED_peer_start (struct GNUNET_TESTBED_Peer *peer);
  * state of the peer).
  *
  * @param peer peer to stop
+ * @param pcc function to call upon completion
+ * @param pcc_cls closure for 'pcc'
  * @return handle to the operation
  */
 struct GNUNET_TESTBED_Operation *
-GNUNET_TESTBED_peer_stop (struct GNUNET_TESTBED_Peer *peer);
+GNUNET_TESTBED_peer_stop (struct GNUNET_TESTBED_Peer *peer,
+			  GNUNET_TESTBED_PeerChurnCallback pcc,
+			  void *pcc_cls);
 
 
 /**
- * Request information about a peer.
+ * Data returned from GNUNET_TESTBED_peer_get_information
+ */
+struct GNUNET_TESTBED_PeerInformation
+{
+  /**
+   * Peer information type; captures which of the types
+   * in the 'op_result' is actually in use.
+   */
+  enum GNUNET_TESTBED_PeerInformationType pit;
+  
+  /**
+   * The result of the get information operation; Choose according to the pit
+   */
+  union
+  { 
+    /**
+     * The configuration of the peer
+     */
+    struct GNUNET_CONFIGURATION_Handle *cfg;
+  
+    /**
+     * The identity of the peer
+     */
+    struct GNUNET_PeerIdentity *id;
+  } result;
+};
+
+
+/**
+ * Callback to be called when the requested peer information is available
+ *
+ * @param cb_cls the closure from GNUNET_TETSBED_peer_get_information()
+ * @param op the operation this callback corresponds to
+ * @param pinfo the result; will be NULL if the operation has failed
+ * @param emsg error message if the operation has failed; will be NULL if the
+ *          operation is successfull
+ */
+typedef void (*GNUNET_TESTBED_PeerInfoCallback) (void *cb_cls,
+						 struct GNUNET_TESTBED_Operation
+						 *op,
+						 const struct
+						 GNUNET_TESTBED_PeerInformation
+						 *pinfo,
+						 const char *emsg);
+
+
+/**
+ * Request information about a peer. The controller callback will not be called
+ * with event type GNUNET_TESTBED_ET_OPERATION_FINISHED when result for this
+ * operation is available. Instead, the GNUNET_TESTBED_PeerInfoCallback() will
+ * be called.
  *
  * @param peer peer to request information about
  * @param pit desired information
+ * @param cb the convenience callback to be called when results for this
+ *          operation are available
+ * @param cb_cls the closure for the above callback
  * @return handle to the operation
  */
 struct GNUNET_TESTBED_Operation *
 GNUNET_TESTBED_peer_get_information (struct GNUNET_TESTBED_Peer *peer,
-				     enum GNUNET_TESTBED_PeerInformationType pit);
+				     enum GNUNET_TESTBED_PeerInformationType
+				     pit,
+				     GNUNET_TESTBED_PeerInfoCallback cb,
+				     void *cb_cls);
 
 
 /**
@@ -901,6 +960,8 @@ GNUNET_TESTBED_underlay_configure_topology (void *op_cls,
  * and asks 'p2' to connect to 'p1'.
  *
  * @param op_cls closure argument to give with the operation event
+ * @param cb the callback to call when this operation has finished
+ * @param cb_cls the closure for the above callback
  * @param p1 first peer
  * @param p2 second peer
  * @return handle to the operation, NULL if connecting these two
@@ -909,6 +970,8 @@ GNUNET_TESTBED_underlay_configure_topology (void *op_cls,
  */
 struct GNUNET_TESTBED_Operation *
 GNUNET_TESTBED_overlay_connect (void *op_cls,
+                                GNUNET_TESTBED_OperationCompletionCallback cb,
+                                void *cb_cls,
 				struct GNUNET_TESTBED_Peer *p1,
 				struct GNUNET_TESTBED_Peer *p2);
 
@@ -961,6 +1024,7 @@ GNUNET_TESTBED_overlay_configure_topology (void *op_cls,
  * Ask the testbed controller to write the current overlay topology to
  * a file.  Naturally, the file will only contain a snapshot as the
  * topology may evolve all the time.
+ * FIXME: needs continuation!?
  *
  * @param controller overlay controller to inspect
  * @param filename name of the file the topology should
@@ -997,6 +1061,25 @@ typedef void (*GNUNET_TESTBED_DisconnectAdapter)(void *cls,
 
 
 /**
+ * Callback to be called when a service connect operation is completed
+ *
+ * @param cls the callback closure from functions generating an operation
+ * @param op the operation that has been finished
+ * @param ca_result the service handle returned from GNUNET_TESTBED_ConnectAdapter()
+ * @param emsg error message in case the operation has failed; will be NULL if
+ *          operation has executed successfully.
+ */
+typedef void (*GNUNET_TESTBED_ServiceConnectCompletionCallback) (void *cls,
+								 struct
+								 GNUNET_TESTBED_Operation
+								 *op,
+								 void
+								 *ca_result, 
+								 const char
+								 *emsg );
+
+
+/**
  * Connect to a service offered by the given peer.  Will ensure that
  * the request is queued to not overwhelm our ability to create and
  * maintain connections with other systems.  The actual service
@@ -1010,6 +1093,8 @@ typedef void (*GNUNET_TESTBED_DisconnectAdapter)(void *cls,
  * @param op_cls closure to pass in operation event
  * @param peer peer that runs the service
  * @param service_name name of the service to connect to
+ * @param cb the callback to call when this operation finishes
+ * @param cb_cls closure for the above callback
  * @param ca helper function to establish the connection
  * @param da helper function to close the connection
  * @param cada_cls closure for ca and da
@@ -1019,6 +1104,8 @@ struct GNUNET_TESTBED_Operation *
 GNUNET_TESTBED_service_connect (void *op_cls,
 				struct GNUNET_TESTBED_Peer *peer,
 				const char *service_name,
+                                GNUNET_TESTBED_ServiceConnectCompletionCallback cb,
+                                void *cb_cls,
 				GNUNET_TESTBED_ConnectAdapter ca,
 				GNUNET_TESTBED_DisconnectAdapter da,
 				void *cada_cls);
@@ -1114,9 +1201,41 @@ GNUNET_TESTBED_destroy (struct GNUNET_TESTBED_Testbed *testbed);
 
 
 /**
- * Opaque handle to testbed run
+ * Callback function to process statistic values from all peers.
+ *
+ * @param cls closure
+ * @param peer the peer the statistic belong to
+ * @param subsystem name of subsystem that created the statistic
+ * @param name the name of the datum
+ * @param value the current value
+ * @param is_persistent GNUNET_YES if the value is persistent, GNUNET_NO if not
+ * @return GNUNET_OK to continue, GNUNET_SYSERR to abort iteration
  */
-struct GNUNET_TESTBED_RunHandle;
+typedef int (*GNUNET_TESTBED_StatisticsIterator) (void *cls,
+						  const struct GNUNET_TESTBED_Peer *peer,
+						  const char *subsystem,
+						  const char *name,
+						  uint64_t value,
+						  int is_persistent);
+
+
+/**
+ * Convenience method that iterates over all (running) peers 
+ * and retrieves all statistics from each peer.
+ *
+ * @param num_peers number of peers to iterate over
+ * @param peers array of peers to iterate over
+ * @param proc processing function for each statistic retrieved
+ * @param cont continuation to call once call is completed(?)
+ * @param cls closure to pass to proc and cont
+ * @return operation handle to cancel the operation
+ */
+struct GNUNET_TESTBED_Operation *
+GNUNET_TESTBED_get_statistics (unsigned int num_peers,
+			       struct GNUNET_TESTBED_Peer **peers,
+                               GNUNET_TESTBED_StatisticsIterator proc,
+                               GNUNET_TESTBED_OperationCompletionCallback cont,
+                               void *cls);
 
 
 /**
@@ -1127,12 +1246,14 @@ struct GNUNET_TESTBED_RunHandle;
  * (with possible options given in "UNDERLAY_XXX" and/or
  * "OVERLAY_XXX").
  *
- * The testbed is to be terminated using a calling GNUNET_TESTBED_shutdown_run()
+ * The testbed is to be terminated using a call to
+ * "GNUNET_SCHEDULER_shutdown".
  *
  * @param host_filename name of the file with the 'hosts', NULL
  *        to run everything on 'localhost'
  * @param cfg configuration to use (for testbed, controller and peers)
- * @param num_peers number of peers to start; FIXME: maybe put that ALSO into cfg?
+ * @param num_peers number of peers to start; FIXME: maybe put that ALSO into
+ *        cfg?; should be greater than 0
  * @param event_mask bit mask with set of events to call 'cc' for;
  *                   or-ed values of "1LL" shifted by the
  *                   respective 'enum GNUNET_TESTBED_EventType'
@@ -1144,9 +1265,8 @@ struct GNUNET_TESTBED_RunHandle;
  * @param cc_cls closure for cc
  * @param master task to run once the testbed is ready
  * @param master_cls closure for 'task'.
- * @return the handle for this testbed run
  */
-struct GNUNET_TESTBED_RunHandle *
+void
 GNUNET_TESTBED_run (const char *host_filename,
 		    const struct GNUNET_CONFIGURATION_Handle *cfg,
 		    unsigned int num_peers,
@@ -1155,15 +1275,6 @@ GNUNET_TESTBED_run (const char *host_filename,
 		    void *cc_cls,
 		    GNUNET_SCHEDULER_Task master,
 		    void *master_cls);
-
-
-/**
- * Stops the testbed run and releases any used resources
- *
- * @param rh the tesbed run handle
- */
-void
-GNUNET_TESTBED_shutdown_run (struct GNUNET_TESTBED_RunHandle *rh);
 
 
 /**
@@ -1185,9 +1296,9 @@ typedef void (*GNUNET_TESTBED_TestMaster)(void *cls,
  * "[testbed]" section of the configuration (with possible options
  * given in "UNDERLAY_XXX" and/or "OVERLAY_XXX").
  *
- * The test is to be terminated by calling GNUNET_TESTBED_shutdown_run()
- * If starting the test fails, the program is stopped without 'master' ever
- * being run
+ * The test is to be terminated using a call to
+ * "GNUNET_SCHEDULER_shutdown".  If starting the test fails,
+ * the program is stopped without 'master' ever being run.
  *
  * NOTE: this function should be called from 'main', NOT from
  * within a GNUNET_SCHEDULER-loop.  This function will initialze
@@ -1197,7 +1308,16 @@ typedef void (*GNUNET_TESTBED_TestMaster)(void *cls,
  * @param testname name of the testcase (to configure logging, etc.)
  * @param cfg_filename configuration filename to use
  *              (for testbed, controller and peers)
- * @param num_peers number of peers to start
+ * @param num_peers number of peers to start; should be greter than 0
+ * @param event_mask bit mask with set of events to call 'cc' for;
+ *                   or-ed values of "1LL" shifted by the
+ *                   respective 'enum GNUNET_TESTBED_EventType'
+ *                   (i.e.  "(1LL << GNUNET_TESTBED_ET_CONNECT) || ...")
+ * @param cc controller callback to invoke on events; This callback is called
+ *        for all peer start events even if GNUNET_TESTBED_ET_PEER_START isn't
+ *        set in the event_mask as this is the only way get access to the
+ *        handle of each peer
+ * @param cc_cls closure for cc
  * @param test_master task to run once the test is ready
  * @param test_master_cls closure for 'task'.
  */
@@ -1205,6 +1325,9 @@ void
 GNUNET_TESTBED_test_run (const char *testname,
 			 const char *cfg_filename,
 			 unsigned int num_peers,
+                         uint64_t event_mask,
+                         GNUNET_TESTBED_ControllerCallback cc,
+                         void *cc_cls,
 			 GNUNET_TESTBED_TestMaster test_master,
 			 void *test_master_cls);
 

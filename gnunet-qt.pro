@@ -57,4 +57,4 @@ RESOURCES += \
 
 INCLUDEPATH += gnunet
 
-LIBS += -lgnunetutil -lgnunetfs -lgnunetpeerinfo -lgnunetcore -lgnunettransport -lgnunetats -l ws2_32
+LIBS += -lgnunetutil -lgnunetfs -lgnunetpeerinfo -lgnunetcore -lgnunettransport -lgnunetats -lws2_32 -lintl

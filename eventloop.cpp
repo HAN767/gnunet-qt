@@ -37,6 +37,8 @@ keepalive_task (void *cls, const struct GNUNET_SCHEDULER_TaskContext *tc)
              (void) GNUNET_CONFIGURATION_load (gcfg, "cangote.conf");
 
              peer2info = GNUNET_CONTAINER_multihashmap_create (256);
+
+
              pnc =   GNUNET_PEERINFO_notify (gcfg, GNUnet::peerinfo_processor, NULL);
              if (pnc == NULL)
              {
@@ -447,28 +449,28 @@ Eventloop::GNUNET_fs_event_handler (void *cls,
      case GNUNET_FS_STATUS_DOWNLOAD_LOST_PARENT:
        download_lost_parent (info->value.download.cctx);
        return info->value.download.cctx;
-
+*/
      case GNUNET_FS_STATUS_SEARCH_START:
        if (NULL != info->value.search.pctx)
-         return setup_inner_search (info->value.search.sc,
-                                    info->value.search.pctx);
+         return (void*)setup_inner_search (info->value.search.sc,
+                                    (SearchResult*)info->value.search.pctx);
        return setup_search_tab (info->value.search.sc, info->value.search.query);
      case GNUNET_FS_STATUS_SEARCH_RESUME:
        ret = setup_search_tab (info->value.search.sc, info->value.search.query);
        if (info->value.search.specifics.resume.message)
-         handle_search_error (ret,
+         handle_search_error ((SearchTab*)ret,
                   info->value.search.specifics.resume.message);
        return ret;
      case GNUNET_FS_STATUS_SEARCH_RESUME_RESULT:
        ret =
-           process_search_result (info->value.search.cctx, info->value.search.pctx,
+           process_search_result ((SearchTab*)info->value.search.cctx, (SearchResult*)info->value.search.pctx,
                                   info->value.search.specifics.resume_result.uri,
                                   info->value.search.specifics.resume_result.meta,
                                   info->value.search.specifics.resume_result.
                                   result,
                                   info->value.search.specifics.resume_result.
                                   applicability_rank);
-       update_search_result (ret,
+       update_search_result ((SearchResult*)ret,
                  info->value.search.specifics.resume_result.
                  meta,
                  info->value.search.specifics.resume_result.
@@ -479,11 +481,11 @@ Eventloop::GNUNET_fs_event_handler (void *cls,
                  availability_rank);
        return ret;
      case GNUNET_FS_STATUS_SEARCH_SUSPEND:
-       close_search_tab (info->value.search.cctx);
+       close_search_tab ((SearchTab*)info->value.search.cctx);
        return NULL;
      case GNUNET_FS_STATUS_SEARCH_RESULT:
-       return process_search_result (info->value.search.cctx,
-                                     info->value.search.pctx,
+       return process_search_result ((SearchTab*)info->value.search.cctx,
+                                     (SearchResult*)info->value.search.pctx,
                                      info->value.search.specifics.result.uri,
                                      info->value.search.specifics.result.meta,
                                      info->value.search.specifics.result.result,
@@ -493,7 +495,7 @@ Eventloop::GNUNET_fs_event_handler (void *cls,
        GNUNET_break (0);
        break;
      case GNUNET_FS_STATUS_SEARCH_UPDATE:
-       update_search_result (info->value.search.specifics.update.cctx,
+       update_search_result ((SearchResult*)info->value.search.specifics.update.cctx,
                  info->value.search.specifics.update.meta,
                  info->value.search.specifics.update.
                  applicability_rank,
@@ -503,7 +505,7 @@ Eventloop::GNUNET_fs_event_handler (void *cls,
                  availability_rank);
        return info->value.search.specifics.update.cctx;
      case GNUNET_FS_STATUS_SEARCH_ERROR:
-       handle_search_error (info->value.search.cctx,
+       handle_search_error ((SearchTab*)info->value.search.cctx,
                 info->value.search.specifics.error.message);
        return info->value.search.cctx;
      case GNUNET_FS_STATUS_SEARCH_PAUSED:
@@ -511,13 +513,13 @@ Eventloop::GNUNET_fs_event_handler (void *cls,
      case GNUNET_FS_STATUS_SEARCH_CONTINUED:
        return info->value.search.cctx;
      case GNUNET_FS_STATUS_SEARCH_RESULT_STOPPED:
-       free_search_result (info->value.search.specifics.result_stopped.cctx);
+       free_search_result ((SearchResult*)info->value.search.specifics.result_stopped.cctx);
        return NULL;
      case GNUNET_FS_STATUS_SEARCH_RESULT_SUSPEND:
-       free_search_result (info->value.search.specifics.result_suspend.cctx);
+       free_search_result ((SearchResult*)info->value.search.specifics.result_suspend.cctx);
        return NULL;
      case GNUNET_FS_STATUS_SEARCH_STOPPED:
-       close_search_tab (info->value.search.cctx);
+       close_search_tab ((SearchTab*)info->value.search.cctx);
        return NULL;
        /*
      case GNUNET_FS_STATUS_UNINDEX_START:
@@ -561,11 +563,291 @@ Eventloop::GNUNET_fs_event_handler (void *cls,
 
 
 
+/**
+ * Setup an "inner" search, that is a subtree representing namespace
+ * 'update' results.  We use a 'struct SearchTab' to represent this
+ * sub-search.  In the GUI, the presentation is similar to search
+ * results in a directory, except that this is for a namespace search
+ * result that gave pointers to an alternative keyword to use and this
+ * is the set of the results found for this alternative keyword.
+ *
+ * All of the 'widget' elements of the returned 'search tab' reference
+ * the parent search.  The whole construction is essentially a trick
+ * to allow us to store the FS-API's 'SearchContext' somewhere and to
+ * find it when we get this kind of 'inner' search results (so that we
+ * can then place them in the tree view in the right spot).
+ *
+ * FIXME-BUG-MAYBE: don't we need a bit more information then? Like exactly where
+ * this 'right spot' is?  Not sure how just having 'sc' helps there,
+ * as it is not a search result (!) to hang this up on!  This might
+ * essentially boil down to an issue with the FS API, not sure...
+ *
+ * @param sc context with FS for the search
+ * @param parent parent search tab
+ * @return struct representing the search result (also stored in the tree
+ *                model at 'iter')
+ */
+struct SearchTab *
+Eventloop::setup_inner_search (struct GNUNET_FS_SearchContext *sc,
+                    struct SearchResult *parent)
+{
+
+  struct SearchTab *ret;
+
+
+  ret = (SearchTab *)malloc (sizeof (struct SearchTab));
+  ret->parent = parent;
+  ret->sc = sc;
+  ret->query_txt = parent->tab->query_txt;
+
+  return ret;
+
+}
+
+
+/**
+ * Setup a new search tab.
+ *
+ * @param sc context with FS for the search, NULL for none (open-URI/orphan tab)
+ * @param query the query, NULL for none (open-URI/orphan tab)
+ * @return search tab handle
+ */
+struct SearchTab *
+Eventloop::setup_search_tab (struct GNUNET_FS_SearchContext *sc,
+          const struct GNUNET_FS_Uri *query)
+{
+
+  struct SearchTab *tab;
+
+  tab =(SearchTab*) GNUNET_malloc (sizeof (struct SearchTab));
+  //GNUNET_CONTAINER_DLL_insert (search_tab_head, search_tab_tail, tab);
+  tab->sc = sc;
+  if (query == NULL)
+  {
+    //no real query, tab is for non-queries, use special label
+    tab->query_txt = GNUNET_strdup ("*");
+  }
+  else
+  {
+    //FS_uri functions should produce UTF-8, so let them be
+    if (GNUNET_FS_uri_test_ksk (query))
+      tab->query_txt = GNUNET_FS_uri_ksk_to_string_fancy (query);
+    else
+      tab->query_txt = GNUNET_FS_uri_to_string (query);
+  }
+
+  return tab;
+
+}
+
+/**
+ * We received a search error message from the FS library.
+ * Present it to the user in an appropriate form.
+ *
+ * @param tab search tab affected by the error
+ * @param emsg the error message
+ */
+void
+Eventloop::handle_search_error (struct SearchTab *tab,
+             const char *emsg)
+{
+    /*
+  gtk_label_set_text (tab->label, _("Error!"));
+  gtk_widget_set_tooltip_text (GTK_WIDGET (tab->label), emsg);
+  */
+}
+
+
+/**
+ * We have received a search result from the FS API.  Add it to the
+ * respective search tab.  The search result can be an 'inner'
+ * search result (updated result for a namespace search) or a
+ * top-level search result.  Update the tree view and the label
+ * of the search tab accordingly.
+ *
+ * @param tab the search tab where the new result should be added
+ * @param parent parent search result (if this is a namespace update result), or NULL
+ * @param uri URI of the search result
+ * @param meta meta data for the result
+ * @param result FS API handle to the result
+ * @param applicability_rank how applicable is the result to the query
+ * @return struct representing the search result (also stored in the tree
+ *                model at 'iter')
+ */
+struct SearchResult *
+Eventloop::process_search_result (struct SearchTab *tab,
+               struct SearchResult *parent,
+                       const struct GNUNET_FS_Uri *uri,
+                       const struct GNUNET_CONTAINER_MetaData *meta,
+                       struct GNUNET_FS_SearchResult *result,
+                       uint32_t applicability_rank)
+{
+    /*
+  struct SearchResult *sr;
+
+  sr = GNUNET_GTK_add_search_result (tab,
+                                     (parent != NULL) ? parent->rr : NULL,
+                     uri,
+                                     meta, result, applicability_rank);
+  update_search_label (tab);
+  return sr;
+  */
+}
 
 
 
 
 
+/**
+ * Some additional information about a search result has been
+ * received.  Update the view accordingly.
+ *
+ * @param sr search result that is being updated
+ * @param meta updated meta data
+ * @param availability_rank updated availability information
+ * @param availability_certainty updated availability certainty
+ * @param applicability_rank updated applicability information
+ */
+void
+Eventloop::update_search_result (struct SearchResult *sr,
+                      const struct GNUNET_CONTAINER_MetaData *meta,
+                      uint32_t applicability_rank,
+              int32_t availability_rank,
+                      uint32_t availability_certainty)
+{
+    /*
+  GtkTreeIter iter;
+  struct GNUNET_CONTAINER_MetaData *ometa;
+  GtkTreeView *tv;
+  GtkTreePath *tp;
+  GtkTreeStore *ts;
+  GtkTreeModel *tm;
+  char *desc;
+  char *mime;
+  GdkPixbuf *pixbuf;
+  guint percent_avail;
+  GtkNotebook *notebook;
+  gint page;
+  int desc_is_a_dup;
+
+  if (sr == NULL)
+  {
+    GNUNET_break (0);
+    return;
+  }
+  GNUNET_log (GNUNET_ERROR_TYPE_DEBUG,
+          "Updating search result SR=%p with %d, %u, %u\n",
+          sr, availability_rank,
+          availability_certainty, applicability_rank);
+  tp = gtk_tree_row_reference_get_path (sr->rr);
+  tm = gtk_tree_row_reference_get_model (sr->rr);
+  ts = GTK_TREE_STORE (tm);
+  if (! gtk_tree_model_get_iter (tm, &iter, tp))
+  {
+    GNUNET_break (0);
+    return;
+  }
+  gtk_tree_path_free (tp);
+  desc = GNUNET_FS_GTK_get_description_from_metadata (meta, &desc_is_a_dup);
+  mime = get_mimetype_from_metadata (meta);
+  pixbuf = GNUNET_FS_GTK_get_thumbnail_from_meta_data (meta);
+  gtk_tree_model_get (tm, &iter,
+                      SEARCH_TAB_MC_METADATA, &ometa,
+                      -1);
+  if (NULL != ometa)
+    GNUNET_CONTAINER_meta_data_destroy (ometa);
+  if (availability_certainty > 0)
+    percent_avail = 50 + (2 * availability_rank - availability_certainty) * 50 / availability_certainty;
+  else
+    percent_avail = 50;
+  gtk_tree_store_set (ts, &iter,
+                      SEARCH_TAB_MC_METADATA,
+                      GNUNET_CONTAINER_meta_data_duplicate (meta),
+                      SEARCH_TAB_MC_PREVIEW, pixbuf,
+                      SEARCH_TAB_MC_PERCENT_AVAILABILITY, (guint) percent_avail,
+                      SEARCH_TAB_MC_FILENAME, desc,
+                      SEARCH_TAB_MC_MIMETYPE, mime,
+                      SEARCH_TAB_MC_APPLICABILITY_RANK,
+                      (guint) applicability_rank,
+                      SEARCH_TAB_MC_AVAILABILITY_CERTAINTY,
+                      (guint) availability_certainty,
+                      SEARCH_TAB_MC_AVAILABILITY_RANK, (gint) availability_rank,
+                      -1);
+  if (pixbuf != NULL)
+    g_object_unref (pixbuf);
+  GNUNET_free (desc);
+  GNUNET_free_non_null (mime);
+
+  notebook =
+      GTK_NOTEBOOK (GNUNET_FS_GTK_get_main_window_object
+                    ("GNUNET_GTK_main_window_notebook"));
+  page = gtk_notebook_get_current_page (notebook);
+  if (gtk_notebook_get_nth_page (notebook, page) == sr->tab->frame)
+  {
+    tv = GTK_TREE_VIEW (gtk_builder_get_object
+                        (sr->tab->builder, "_search_result_frame"));
+    GNUNET_FS_GTK_search_treeview_cursor_changed (tv, sr->tab);
+  }
+  */
+}
+
+
+
+/**
+ * Close a search tab and free associated state.  Assumes that the
+ * respective tree model has already been cleaned up (this just
+ * updates the notebook and frees the 'tab' itself).
+ *
+ * @param tab search tab to close
+ */
+void
+Eventloop::close_search_tab (struct SearchTab *tab)
+{
+
+  if (tab->parent != NULL)
+  {
+    /* not a top-level search (namespace update search), do not close
+       tab here! */
+    GNUNET_free (tab);
+    return;
+  }
+
+}
+
+
+/**
+ * Free a particular search result and remove the respective
+ * entries from the respective tree store.  This function
+ * is called when a search is stopped to clean up the state
+ * of the tab.
+ *
+ * @param sr the search result to clean up
+ */
+void
+Eventloop::free_search_result (struct SearchResult *sr)
+{
+
+  struct GNUNET_FS_Uri *uri;
+  struct GNUNET_CONTAINER_MetaData *meta;
+
+  GNUNET_log (GNUNET_ERROR_TYPE_DEBUG,
+          "Freeing a search result SR=%p\n",
+          sr);
+  if ( (NULL == sr)  )
+  {
+    GNUNET_break (0);
+    return;
+  }
+
+
+  if (uri != NULL)
+    GNUNET_FS_uri_destroy (uri);
+  if (meta != NULL)
+    GNUNET_CONTAINER_meta_data_destroy (meta);
+
+  GNUNET_free (sr);
+
+}
 
 
 

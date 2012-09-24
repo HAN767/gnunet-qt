@@ -1227,7 +1227,7 @@ extern "C"
 #define GNUNET_MESSAGE_TYPE_TRANSPORT_BROADCAST_BEACON 384
 
 /*******************************************************************************
- * STREAM LIRBRARY MESSAGES
+ * STREAM messages types
  ******************************************************************************/
 
 /**
@@ -1503,7 +1503,7 @@ extern "C"
 /**
  * Message for operation events
  */
-#define GNUNET_MESSAGE_TYPE_TESTBED_OPERATIONEVENT 474
+#define GNUNET_MESSAGE_TYPE_TESTBED_OPERATIONFAILEVENT 474
 
 /**
  * Message to signal successful peer creation
@@ -1526,10 +1526,21 @@ extern "C"
 #define GNUNET_MESSAGE_TYPE_TESTBED_PEERCONFIG 478
 
 /**
+ * Message to request a controller to make one of its peer to connect to another
+ * peer using the contained HELLO
+ */
+#define GNUNET_MESSAGE_TYPE_TESTBED_REQUESTCONNECT 479
+
+/**
+ * Message to cancel a REQUESTCONNECT request
+ */
+#define GNUNET_MESSAGE_TYPE_TESTBED_REQUESTCONNECTCANCEL 480
+
+/**
  * Not really a message, but for careful checks on the testbed messages; Should
  * always be the maximum and never be used to send messages with this type
  */
-#define GNUNET_MESSAGE_TYPE_TESTBED_MAX 479
+#define GNUNET_MESSAGE_TYPE_TESTBED_MAX 481
 
 /**
  * The initialization message towards gnunet-testbed-helper
@@ -1543,8 +1554,25 @@ extern "C"
 
 
 /**
- *  Next available: 500
+ * GNS. FIXME: document!
  */
+#define GNUNET_MESSAGE_TYPE_GNS_LOOKUP 500
+
+#define GNUNET_MESSAGE_TYPE_GNS_LOOKUP_RESULT 501
+
+#define GNUNET_MESSAGE_TYPE_GNS_SHORTEN 502
+
+#define GNUNET_MESSAGE_TYPE_GNS_SHORTEN_RESULT 503
+
+#define GNUNET_MESSAGE_TYPE_GNS_GET_AUTH 504
+
+#define GNUNET_MESSAGE_TYPE_GNS_GET_AUTH_RESULT 505
+
+
+/**
+ *  Next available: 520
+ */
+
 
 /*******************************************************************************
  * TODO: we need a way to register message types centrally (via some webpage).

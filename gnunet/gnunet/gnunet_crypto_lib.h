@@ -137,17 +137,6 @@ struct GNUNET_CRYPTO_HashAsciiEncoded
 };
 
 
-
-
-/**
- * @brief 256-bit hashcode
- */
-struct GNUNET_CRYPTO_ShortHashCode
-{
-  uint32_t bits[256 / 8 / sizeof (uint32_t)];   /* = 8 */
-};
-
-
 /**
  * @brief 0-terminated ASCII encoding of a 'struct GNUNET_ShortHashCode'.
  */
@@ -1083,6 +1072,17 @@ GNUNET_CRYPTO_rsa_verify (uint32_t purpose,
  */
 void
 GNUNET_CRYPTO_random_disable_entropy_gathering (void);
+
+
+/**
+ * Check if we are using weak random number generation.
+ *
+ * @return GNUNET_YES if weak number generation is on
+ *         (thus will return YES if 'GNUNET_CRYPTO_random_disable_entropy_gathering'
+ *          was called previously).
+ */
+int
+GNUNET_CRYPTO_random_is_weak (void);
 
 
 #if 0                           /* keep Emacsens' auto-indent happy */

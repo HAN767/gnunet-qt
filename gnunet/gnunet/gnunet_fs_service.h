@@ -55,7 +55,7 @@ extern "C"
  * 9.0.0: CPS-style integrated API
  * 9.1.1: asynchronous directory scanning
  */
-#define GNUNET_FS_VERSION 0x00090102
+#define GNUNET_FS_VERSION 0x00090103
 
 
 /* ******************** URI API *********************** */
@@ -1396,7 +1396,7 @@ struct GNUNET_FS_ProgressInfo
 	   */
           struct GNUNET_HashCode id;
 
-        } namespaceg;
+        } ns;
 
       } specifics;
 
@@ -1542,8 +1542,7 @@ struct GNUNET_FS_ProgressInfo
  *         field in the GNUNET_FS_ProgressInfo struct.
  */
 typedef void *(*GNUNET_FS_ProgressCallback) (void *cls,
-                                             const struct GNUNET_FS_ProgressInfo
-                                             * info);
+                                             const struct GNUNET_FS_ProgressInfo *info);
 
 
 /**
@@ -1570,30 +1569,31 @@ enum GNUNET_FS_Flags
   GNUNET_FS_FLAGS_DO_PROBES = 2
 };
 
+
 /**
  * Options specified in the VARARGs portion of GNUNET_FS_start.
  */
 enum GNUNET_FS_OPTIONS
 {
 
-    /**
-     * Last option in the VARARG list.
-     */
+  /**
+   * Last option in the VARARG list.
+   */
   GNUNET_FS_OPTIONS_END = 0,
 
-    /**
-     * Select the desired amount of parallelism (this option should be
-     * followed by an "unsigned int" giving the desired maximum number
-     * of parallel downloads).
-     */
+  /**
+   * Select the desired amount of parallelism (this option should be
+   * followed by an "unsigned int" giving the desired maximum number
+   * of parallel downloads).
+   */
   GNUNET_FS_OPTIONS_DOWNLOAD_PARALLELISM = 1,
 
-    /**
-     * Maximum number of requests that should be pending at a given
-     * point in time (invidivual downloads may go above this, but
-     * if we are above this threshold, we should not activate any
-     * additional downloads.
-     */
+  /**
+   * Maximum number of requests that should be pending at a given
+   * point in time (invidivual downloads may go above this, but
+   * if we are above this threshold, we should not activate any
+   * additional downloads.
+   */
   GNUNET_FS_OPTIONS_REQUEST_PARALLELISM = 2
 };
 
@@ -1994,7 +1994,7 @@ enum GNUNET_FS_PublishOptions
  *
  * @param h handle to the file sharing subsystem
  * @param fi information about the file or directory structure to publish
- * @param namespace namespace to publish the file in, NULL for no namespace
+ * @param ns namespace to publish the file in, NULL for no namespace
  * @param nid identifier to use for the publishd content in the namespace
  *        (can be NULL, must be NULL if namespace is NULL)
  * @param nuid update-identifier that will be used for future updates
@@ -2005,7 +2005,7 @@ enum GNUNET_FS_PublishOptions
 struct GNUNET_FS_PublishContext *
 GNUNET_FS_publish_start (struct GNUNET_FS_Handle *h,
                          struct GNUNET_FS_FileInformation *fi,
-                         struct GNUNET_FS_Namespace *namespaceg, const char *nid,
+                         struct GNUNET_FS_Namespace *ns, const char *nid,
                          const char *nuid,
                          enum GNUNET_FS_PublishOptions options);
 
@@ -2083,7 +2083,7 @@ struct GNUNET_FS_PublishSksContext;
  * Publish an SBlock on GNUnet.
  *
  * @param h handle to the file sharing subsystem
- * @param namespace namespace to publish in
+ * @param ns namespace to publish in
  * @param identifier identifier to use
  * @param update update identifier to use
  * @param meta metadata to use
@@ -2096,7 +2096,7 @@ struct GNUNET_FS_PublishSksContext;
  */
 struct GNUNET_FS_PublishSksContext *
 GNUNET_FS_publish_sks (struct GNUNET_FS_Handle *h,
-                       struct GNUNET_FS_Namespace *namespaceg,
+                       struct GNUNET_FS_Namespace *ns,
                        const char *identifier, const char *update,
                        const struct GNUNET_CONTAINER_MetaData *meta,
                        const struct GNUNET_FS_Uri *uri,
@@ -2188,7 +2188,7 @@ struct GNUNET_FS_AdvertisementContext;
  *
  * @param h handle to the file sharing subsystem
  * @param ksk_uri keywords to use for advertisment
- * @param namespace handle for the namespace that should be advertised
+ * @param ns handle for the namespace that should be advertised
  * @param meta meta-data for the namespace advertisement
  * @param bo block options
  * @param rootEntry name of the root of the namespace
@@ -2199,7 +2199,7 @@ struct GNUNET_FS_AdvertisementContext;
 struct GNUNET_FS_AdvertisementContext *
 GNUNET_FS_namespace_advertise (struct GNUNET_FS_Handle *h,
                                struct GNUNET_FS_Uri *ksk_uri,
-                               struct GNUNET_FS_Namespace *namespaceg,
+                               struct GNUNET_FS_Namespace *ns,
                                const struct GNUNET_CONTAINER_MetaData *meta,
                                const struct GNUNET_FS_BlockOptions *bo,
                                const char *rootEntry,
@@ -2243,14 +2243,14 @@ GNUNET_FS_namespace_dup (struct GNUNET_FS_Namespace *ns);
  * memory) or also to freeze the namespace to prevent further
  * insertions by anyone.
  *
- * @param namespace handle to the namespace that should be deleted / freed
+ * @param ns handle to the namespace that should be deleted / freed
  * @param freeze prevents future insertions; creating a namespace
  *        with the same name again will create a fresh namespace instead
  *
  * @return GNUNET_OK on success, GNUNET_SYSERR on error
  */
 int
-GNUNET_FS_namespace_delete (struct GNUNET_FS_Namespace *namespaceg, int freeze);
+GNUNET_FS_namespace_delete (struct GNUNET_FS_Namespace *ns, int freeze);
 
 
 /**
@@ -2312,13 +2312,13 @@ typedef void (*GNUNET_FS_IdentifierProcessor) (void *cls, const char *last_id,
  * cause the library to call "ip" with all children of the node.  Note
  * that cycles within an SCC are possible (including self-loops).
  *
- * @param namespace namespace to inspect for updateable content
+ * @param ns namespace to inspect for updateable content
  * @param next_id ID to look for; use NULL to look for SCC roots
  * @param ip function to call on each updateable identifier
  * @param ip_cls closure for ip
  */
 void
-GNUNET_FS_namespace_list_updateable (struct GNUNET_FS_Namespace *namespaceg,
+GNUNET_FS_namespace_list_updateable (struct GNUNET_FS_Namespace *ns,
                                      const char *next_id,
                                      GNUNET_FS_IdentifierProcessor ip,
                                      void *ip_cls);

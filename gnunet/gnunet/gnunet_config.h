@@ -591,7 +591,7 @@
 /* Defined if libcurl supports TFTP */
 #define LIBCURL_PROTOCOL_TFTP 1
 
-/* This is a Linux system */
+/* This is a Linux kernel */
 /* #undef LINUX */
 
 /* Define to 1 if `lstat' dereferences a symlink specified with a trailing
